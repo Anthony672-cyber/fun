@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Infinite Zoom-ish Canvas</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background: #050510;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+    }
+    #info {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      z-index: 10;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">Scroll to zoom, drag to move</div>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // "Camera" state
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Drag state
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      // Move camera (adjust by scale so drag feels consistent)
+      offsetX += dx / scale;
+      offsetY += dy / scale;
+      draw();
+    });
+
+    // Zoom with mouse wheel
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomIntensity = 0.0015;
+      const wheel = e.deltaY;
+      const zoom = Math.exp(-wheel * zoomIntensity);
+
+      // Mouse position in screen coords
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      // Convert to world coords before zoom
+      const worldXBefore = (mouseX / scale) - offsetX;
+      const worldYBefore = (mouseY / scale) - offsetY;
+
+      // Apply zoom
+      scale *= zoom;
+
+      // Clamp scale a bit so it doesn’t explode
+      scale = Math.max(0.05, Math.min(scale, 200));
+
+      // After zoom, adjust offset so the point under the mouse stays fixed
+      const worldXAfter = (mouseX / scale) - offsetX;
+      const worldYAfter = (mouseY / scale) - offsetY;
+
+      offsetX += worldXAfter - worldXBefore;
+      offsetY += worldYAfter - worldYBefore;
+
+      draw();
+    }, { passive: false });
+
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Apply camera transform
+      ctx.setTransform(scale, 0, 0, scale, offsetX * scale, offsetY * scale);
+
+      // Background
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(-100000, -100000, 200000, 200000);
+
+      // Draw a repeating pattern that changes with zoom
+      drawInfinitePattern();
+    }
+
+    function drawInfinitePattern() {
+      const baseSize = 200; // base cell size
+      const zoomLevel = Math.log10(scale + 0.0001) + 3; // just to vary pattern
+      const detail = Math.max(2, Math.min(8, Math.floor(zoomLevel)));
+
+      // We’ll draw a grid around the camera area
+      const viewWidth = canvas.width / scale;
+      const viewHeight = canvas.height / scale;
+
+      const startX = Math.floor((-offsetX - viewWidth) / baseSize) * baseSize;
+      const endX   = Math.floor((-offsetX + 2 * viewWidth) / baseSize) * baseSize;
+      const startY = Math.floor((-offsetY - viewHeight) / baseSize) * baseSize;
+      const endY   = Math.floor((-offsetY + 2 * viewHeight) / baseSize) * baseSize;
+
+      for (let x = startX; x <= endX; x += baseSize) {
+        for (let y = startY; y <= endY; y += baseSize) {
+          drawCell(x, y, baseSize, detail);
+        }
+      }
+    }
+
+    function drawCell(x, y, size, detail) {
+      // Use a pseudo-random color based on cell coordinates
+      const seed = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+      const hue = (seed * 360 + (Math.log(scale + 1) * 80)) % 360;
+
+      ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+      ctx.fillRect(x, y, size, size);
+
+      // Draw nested squares inside to give that “zoom deeper” feeling
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      for (let i = 1; i <= detail; i++) {
+        const t = i / (detail + 1);
+        const s = size * t;
+        const cx = x + size / 2;
+        const cy = y + size / 2;
+        ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
+      }
+    }
+
+    draw();
+  </script>
+</body>
+</html>
